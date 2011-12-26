@@ -1,10 +1,10 @@
 #!/usr/bin/python
 
 import os
-from sys import stdout
+from sys import stdout as _stdout
 from glob import glob
 from fnmatch import fnmatch, filter as fnfilter
-from subprocess import Popen, PIPE
+from subprocess import Popen, PIPE as _PIPE
 import re
 
 
@@ -284,25 +284,31 @@ def check_stdlib(func):
 #
 #  U   undefined
 #
-# table
-#   name: string
-#   have: list of string
-#   need: list of dict: reference -> link target
-#
 NAME = 0
 HAVE = 1
 NEED = 2
-pat = re.compile(r"\s+([BCDRTU])\s([^@\.]+)")
+LINK = 3
+_pat = re.compile(r"\s+([BCDRTU])\s([^@\.]+)")
+
 def create_symbol_table(filename):
-	proc = Popen(["nm", filename], shell=False, stdout=PIPE)
+	"""\
+create symbol table from the input file
+
+table: list
+  name: string
+  have: list of string
+  need: list of list: [ref tag, link target]
+  link: a set of string: linked target name
+"""
+	proc = Popen(["nm", filename], shell=False, stdout=_PIPE)
 	output = proc.communicate()
 	if not output[0]:
 		return None
 	#print repr(output[0])
-	tbl = [ filename, [], [] ]
+	tbl = [ filename, [], [], set([]) ]
 	syms = output[0].strip().split("\n")
 	for line in syms:
-		g = pat.search(line)
+		g = _pat.search(line)
 		if not g: continue
 		t, ref = g.groups()
 		if t == 'U':
@@ -314,68 +320,128 @@ def create_symbol_table(filename):
 			tbl[HAVE].append(ref)
 	return tbl
 
-def resolve_symbol(tbl, name):
-	for obj in tbl:
+def find_symbol(pkgs, pkgname, tagname):
+	"""\
+return the owner of a tag name (might be a public function
+or an exported variable) from a list of obj symbol tables.
+"""
+	# search the same package first
+	for obj in pkgs[pkgname]:
 		if not obj[HAVE]: continue
-		if name in obj[HAVE]:
-			#print "        found", name, "in", obj[NAME]
+		if tagname in obj[HAVE]:
+			#print "        found", tagname, "in", obj[NAME]
 			return obj[NAME]
+	# search other packages
+	for pkg in pkgs:
+		for obj in pkgs[pkg]:
+			if not obj[HAVE]: continue
+			if tagname in obj[HAVE]:
+				#print "        found", tagname, "in", obj[NAME]
+				return obj[NAME]
 	return None
 
-def analyze_symbol(tbl):
-	for obj in tbl:
-		if not obj[NEED]: continue
-#		print "analyzing", obj[NAME]
-		for sym_pair in obj[NEED]:
-			#print "    resolving", sym_pair[0]
-			sym_pair[1] = resolve_symbol(tbl, sym_pair[0])
-#			if not sym_pair[1]:
-#				print "missing", sym_pair[0]
+def analyze_symbol(pkgs):
+	for pkg in pkgs:
+		for obj in pkgs[pkg]:
+			if not obj[NEED]: continue
+#			print "analyzing", obj[NAME]
+			refs = obj[LINK]
+			for ref_pair in obj[NEED]:
+				#print "    resolving", ref_pair[0]
+				ref_pair[1] = find_symbol(pkgs, pkg, ref_pair[0])
+#				if not ref_pair[1]:
+#					print "missing", ref_pair[0]
+
+				if ref_pair[1]:
+					refs.add(ref_pair[1])
+					#print "    ", obj[NAME], "add", ref_pair[1]
+
 	pass
 
-def dump_dot(tbl, fout):
+def dump_dot(pkgs, fout):
 	def _name(s):
 		return s.replace('.', '_').replace('/', '_').replace('-', '_')
 
 	header = """digraph g
 {
 	/*bgcolor="transparent";*/
+	node [color = lightgray, style = filled];
 
 """
 	fout.write(header)
 	# write node
-	for obj in tbl:
-		fout.write("%s [label=\"%s\"];\n" % (_name(obj[NAME]), obj[NAME]))
+	for pkg in pkgs:
+		fout.write("\tsubgraph cluster_%s {\n\t\tlabel = \"%s\";\n\n" % (_name(pkg), pkg))
+		for obj in pkgs[pkg]:
+			if not obj[LINK]:
+				fout.write("\t\t%s [label=\"%s (%d/%d)\", color = \"lightgreen\"];\n" % (_name(obj[NAME]), obj[NAME], len(obj[HAVE]), len(obj[LINK])))
+			else:
+				fout.write("\t\t%s [label=\"%s (%d/%d)\"];\n" % (_name(obj[NAME]), obj[NAME], len(obj[HAVE]), len(obj[LINK])))
+		fout.write("\t}\n\n")
 	# write link
-	for obj in tbl:
-		if not obj[NEED]: continue
+	for pkg in pkgs:
+		for obj in pkgs[pkg]:
+			if not obj[NEED]: continue
 
-		refs = set([])
-		for ref_pair in obj[NEED]:
-			if ref_pair[1]:
-				refs.add(ref_pair[1])
-				#print "    ", obj[NAME], "add", ref_pair[1]
-		for ref in refs:
-			fout.write("%s -> %s;\n" % (_name(obj[NAME]), _name(ref)))
+			refs = obj[LINK]
+			for ref in refs:
+				fout.write("\t%s -> %s;\n" % (_name(obj[NAME]), _name(ref)))
+
 	fout.write("}\n")
 	pass
 
+def dump_tbl(pkgs, fout):
+	def _name(s):
+		return s.replace('.', '_').replace('/', '_').replace('-', '_')
+
+	# write node
+	for pkg in pkgs:
+		fout.write("**************************************\n")
+		fout.write("** package: %s\n" % (pkg,))
+		for obj in pkgs[pkg]:
+			fout.write("======================================\n")
+			fout.write("** file: %s (%s)\n" % (obj[NAME], _name(obj[NAME])))
+			if obj[HAVE]:
+				fout.write("******** have: %s\n" % (repr(obj[HAVE]),) )
+			else:
+				fout.write("******** have: all private\n")
+			if obj[NEED] and obj[LINK]:
+				fout.write("******** need: %s\n" % (repr(obj[NEED]),) )
+				fout.write("******** link: %s\n\n" % (repr(obj[LINK]),) )
+			else:
+				fout.write("******** need: standalone\n")
+				fout.write("******** link: standalone\n\n")
+	pass
+
 if __name__ == '__main__':
-	obj_table_list = []
+	pkglist = {}
 
 	walker = create_walker(".")
 	for f in walker:
+		p = f.split('/')
+		basedir = '/'.join(p[:-1])
+
+		if not basedir in pkglist:
+			pkglist[basedir] = []
+
 		tbl = create_symbol_table(f)
 		if not tbl: continue
 
-		obj_table_list.append(tbl)
+		if 'main' in tbl[HAVE]:
+			#print 'found main() in', f
+			basedir = '.'.join(f.split('.')[:-1])
+			if not basedir in pkglist:
+				pkglist[basedir] = []
 
-	analyze_symbol(obj_table_list)
+		pkglist[basedir].append(tbl)
+
+	analyze_symbol(pkglist)
 
 	#print "obj_table_list: ", len(obj_table_list)
 
 	#print obj_table_list
-	dump_dot(obj_table_list, stdout)
+	dump_dot(pkglist, _stdout)
+#	dump_tbl(pkglist, _stdout)
 
 	#f = "./src/im-client/hime-crypt-fpic.o"
 	#f = "./src/hime1.so"
