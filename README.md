@@ -1,6 +1,6 @@
 # Overview
 
-depana.py is a simple static dependency analyzer and tries to generate a dot file to show the dependency.
+**depana** is a simple static dependency analyzer and tries to generate a dot file to show the dependency.
 
 
 # Usage
@@ -8,14 +8,14 @@ depana.py is a simple static dependency analyzer and tries to generate a dot fil
 1. build your project
 
 2. run the script and redirect its output to a file
-   * `$ depana.py > project.dot`
+    * `$ depana.py > project.dot`
 
 3. convert the dot file to any supported format
-   * `$ dot -Tsvg -o project.svg project.dot`
+    * `$ dot -Tsvg -o project.svg project.dot`
 
 
 # Author
 
-> letoh <letoh DOT tw AT gmail>
+> letoh <DOT tw AT gmail>
 
 
