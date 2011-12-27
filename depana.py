@@ -6,6 +6,8 @@ from glob import glob
 from fnmatch import fnmatch, filter as fnfilter
 from subprocess import Popen, PIPE as _PIPE
 import re
+# note: this module will be deprecated since py2.7
+from optparse import OptionParser
 
 
 def create_walker(root_dir = ".", inc_pattern = ["*.o", "*.pico"], check_hidden = False):
@@ -429,6 +431,17 @@ def dump_tbl(pkgs, fout):
 	pass
 
 if __name__ == '__main__':
+	parser = OptionParser()
+	parser.add_option("-g", "--dot", help = "generate dot file (default)",
+		action="store_true", dest = "gendot", default = True)
+	parser.add_option("-x", "--dump", help = "dump raw file",
+		action="store_false", dest = "gendot", default = False)
+	parser.add_option("-o", "--output", help = "output file (default: stdout)",
+		action="store", dest="outfile", type = "string", default = '-')
+	parser.set_defaults(gendot = True)
+
+	options, args = parser.parse_args()
+
 	pkglist = {}
 
 	walker = create_walker(".")
@@ -452,16 +465,13 @@ if __name__ == '__main__':
 
 	analyze_symbol(pkglist)
 
-	#print "obj_table_list: ", len(obj_table_list)
-
-	#print obj_table_list
-	dump_dot(pkglist, _stdout)
-#	dump_tbl(pkglist, _stdout)
-
-	#f = "./src/im-client/hime-crypt-fpic.o"
-	#f = "./src/hime1.so"
-	#f = "./build.sh"
-	#print create_symbol_table(f)
-
+	if options.outfile == '-':
+		of = _stdout
+	else:
+		of = file(options.outfile, "w")
+	if options.gendot:
+		dump_dot(pkglist, of)
+	else:
+		dump_tbl(pkglist, of)
 
 
