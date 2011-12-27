@@ -288,6 +288,7 @@ NAME = 0
 HAVE = 1
 NEED = 2
 LINK = 3
+BREF = 4	# back reference
 _pat = re.compile(r"\s+([BCDRTU])\s([^@\.]+)")
 
 def create_symbol_table(filename):
@@ -305,7 +306,7 @@ table: list
 	if not output[0]:
 		return None
 	#print repr(output[0])
-	tbl = [ filename, [], [], set([]) ]
+	tbl = [ filename, [], [], set([]), set([]) ]
 	syms = output[0].strip().split("\n")
 	for line in syms:
 		g = _pat.search(line)
@@ -330,14 +331,14 @@ or an exported variable) from a list of obj symbol tables.
 		if not obj[HAVE]: continue
 		if tagname in obj[HAVE]:
 			#print "        found", tagname, "in", obj[NAME]
-			return obj[NAME]
+			return obj
 	# search other packages
 	for pkg in pkgs:
 		for obj in pkgs[pkg]:
 			if not obj[HAVE]: continue
 			if tagname in obj[HAVE]:
 				#print "        found", tagname, "in", obj[NAME]
-				return obj[NAME]
+				return obj
 	return None
 
 def analyze_symbol(pkgs):
@@ -345,17 +346,19 @@ def analyze_symbol(pkgs):
 		for obj in pkgs[pkg]:
 			if not obj[NEED]: continue
 #			print "analyzing", obj[NAME]
-			refs = obj[LINK]
+			links = obj[LINK]
 			for ref_pair in obj[NEED]:
 				#print "    resolving", ref_pair[0]
-				ref_pair[1] = find_symbol(pkgs, pkg, ref_pair[0])
-#				if not ref_pair[1]:
+				link_obj = find_symbol(pkgs, pkg, ref_pair[0])
+
+				if link_obj and link_obj[NAME]:
+					ref_pair[1] = link_obj[NAME]
+					links.add(ref_pair[1])
+					link_obj[BREF].add(obj[NAME])
+#					print "    ", obj[NAME], "ref to", ref_pair[1]
+#				else:
 #					print "missing", ref_pair[0]
-
-				if ref_pair[1]:
-					refs.add(ref_pair[1])
-					#print "    ", obj[NAME], "add", ref_pair[1]
-
+					pass
 	pass
 
 def dump_dot(pkgs, fout):
@@ -373,18 +376,22 @@ def dump_dot(pkgs, fout):
 	for pkg in pkgs:
 		fout.write("\tsubgraph cluster_%s {\n\t\tlabel = \"%s\";\n\n" % (_name(pkg), pkg))
 		for obj in pkgs[pkg]:
+			color_prop = ''
 			if not obj[LINK]:
-				fout.write("\t\t%s [label=\"%s (%d/%d)\", color = \"lightgreen\"];\n" % (_name(obj[NAME]), obj[NAME], len(obj[HAVE]), len(obj[LINK])))
-			else:
-				fout.write("\t\t%s [label=\"%s (%d/%d)\"];\n" % (_name(obj[NAME]), obj[NAME], len(obj[HAVE]), len(obj[LINK])))
+				color_prop = ', color = "lightgreen"'
+			elif not obj[BREF]:
+				color_prop = ', color = "hotpink"'
+#				fout.write("\t\t%s [label=\"%s (%d/%d)\", color = \"lightgreen\"];\n" % (_name(obj[NAME]), obj[NAME], len(obj[BREF]), len(obj[LINK])))
+
+			fout.write("\t\t%s [label=\"%s (%d/%d)\"%s];\n" % (_name(obj[NAME]), obj[NAME], len(obj[BREF]), len(obj[LINK]), color_prop))
 		fout.write("\t}\n\n")
 	# write link
 	for pkg in pkgs:
 		for obj in pkgs[pkg]:
 			if not obj[NEED]: continue
 
-			refs = obj[LINK]
-			for ref in refs:
+			links = obj[LINK]
+			for ref in links:
 				fout.write("\t%s -> %s;\n" % (_name(obj[NAME]), _name(ref)))
 
 	fout.write("}\n")
@@ -402,15 +409,23 @@ def dump_tbl(pkgs, fout):
 			fout.write("======================================\n")
 			fout.write("** file: %s (%s)\n" % (obj[NAME], _name(obj[NAME])))
 			if obj[HAVE]:
-				fout.write("******** have: %s\n" % (repr(obj[HAVE]),) )
+				fout.write("++++++++ have: %s\n" % (repr(obj[HAVE]),) )
 			else:
-				fout.write("******** have: all private\n")
+				fout.write("++++++++ have: all private\n")
+
 			if obj[NEED] and obj[LINK]:
-				fout.write("******** need: %s\n" % (repr(obj[NEED]),) )
-				fout.write("******** link: %s\n\n" % (repr(obj[LINK]),) )
+				fout.write("++++++++ need: %d, %s\n" % (len(obj[NEED]), repr(obj[NEED])) )
+				fout.write("++++++++ link: %d, %s\n" % (len(obj[LINK]), repr(obj[LINK])) )
 			else:
-				fout.write("******** need: standalone\n")
-				fout.write("******** link: standalone\n\n")
+				fout.write("++++++++ need: standalone\n")
+				fout.write("++++++++ link: standalone\n")
+
+			if obj[BREF]:
+				fout.write("++++++++ bref: %d, %s\n" % (len(obj[BREF]), repr(obj[BREF])) )
+			else:
+				fout.write("++++++++ bref: standalone\n")
+
+			fout.write("\n")
 	pass
 
 if __name__ == '__main__':
