@@ -430,21 +430,10 @@ def dump_tbl(pkgs, fout):
 			fout.write("\n")
 	pass
 
-if __name__ == '__main__':
-	parser = OptionParser()
-	parser.add_option("-g", "--dot", help = "generate dot file (default)",
-		action="store_true", dest = "gendot", default = True)
-	parser.add_option("-x", "--dump", help = "dump raw file",
-		action="store_false", dest = "gendot", default = False)
-	parser.add_option("-o", "--output", help = "output file (default: stdout)",
-		action="store", dest="outfile", type = "string", default = '-')
-	parser.set_defaults(gendot = True)
-
-	options, args = parser.parse_args()
-
+def extract_symbols(path = '.'):
 	pkglist = {}
 
-	walker = create_walker(".")
+	walker = create_walker(path)
 	for f in walker:
 		p = f.split('/')
 		basedir = '/'.join(p[:-1])
@@ -463,6 +452,24 @@ if __name__ == '__main__':
 
 		pkglist[basedir].append(tbl)
 
+	return pkglist
+
+
+if __name__ == '__main__':
+	parser = OptionParser()
+	parser.add_option("-g", "--dot", help = "generate dot file (default)",
+		action="store_true", dest = "gendot", default = True)
+	parser.add_option("-x", "--dump", help = "dump raw file",
+		action="store_false", dest = "gendot", default = False)
+	parser.add_option("-p", "--path", help = "start path (default: .)",
+		action="store", dest = "path", default = '.')
+	parser.add_option("-o", "--output", help = "output file (default: stdout)",
+		action="store", dest="outfile", type = "string", default = '-')
+	parser.set_defaults(gendot = True)
+
+	options, args = parser.parse_args()
+
+	pkglist = extract_symbols(options.path)
 	analyze_symbol(pkglist)
 
 	if options.outfile == '-':
