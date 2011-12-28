@@ -10,8 +10,11 @@ import re
 from optparse import OptionParser
 
 
-def create_walker(root_dir = ".", inc_pattern = ["*.o", "*.pico"], check_hidden = False):
+def create_walker(root_dir = ".", depth = 0, inc_pattern = ["*.o", "*.pico"], check_hidden = False):
+	root_dir_depth = root_dir.count(os.path.sep)
 	for root, dirs, files in os.walk(root_dir):
+#		print "path:", root_dir, ", root:", root, ", dirs:", dirs, root.count(os.path.sep) - root_dir_depth, depth
+		if depth and depth <= (root.count(os.path.sep) - root_dir_depth): continue
 		if not files: continue
 		if not check_hidden and fnmatch(root[len(root_dir):], "/.[!.]*"): continue
 
@@ -20,7 +23,7 @@ def create_walker(root_dir = ".", inc_pattern = ["*.o", "*.pico"], check_hidden 
 			n.extend(fnfilter(files, pat))
 		if not n: continue
 
-#		print "\x1b[1;33m", root, "\x1b[0m", len(n)
+#		print "\x1b[1;33m", root, "\x1b[0m", len(n), "items"
 		for file in n:
 #			print "\t\t", os.path.join(root, file)
 			yield os.path.join(root, file)
@@ -430,10 +433,10 @@ def dump_tbl(pkgs, fout):
 			fout.write("\n")
 	pass
 
-def extract_symbols(path = '.'):
+def extract_symbols(path = '.', depth = 0):
 	pkglist = {}
 
-	walker = create_walker(path)
+	walker = create_walker(path, depth)
 	for f in walker:
 		p = f.split('/')
 		basedir = '/'.join(p[:-1])
@@ -467,11 +470,13 @@ if __name__ == '__main__':
 		action="store", dest = "path", default = '.')
 	parser.add_option("-o", "--output", help = "output file (default: stdout)",
 		action="store", dest="outfile", type = "string", default = '-')
+	parser.add_option("-m", "--depth", help = "max depth (default: 0, unlimited)",
+		action="store", dest="depth", type = "int", default = 0)
 	parser.set_defaults(gendot = True)
 
 	options, args = parser.parse_args()
 
-	pkglist = extract_symbols(options.path)
+	pkglist = extract_symbols(options.path.rstrip(os.path.sep), options.depth)
 	analyze_symbol(pkglist)
 
 	if not options.slient:
