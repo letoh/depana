@@ -433,6 +433,84 @@ def dump_tbl(pkgs, fout):
 			fout.write("\n")
 	pass
 
+def dump_trace(pkgs, fout, filename):
+#	from sys import setrecursionlimit
+#	setrecursionlimit(10000)
+
+	def _n(s):
+		return s.split('.')[0] + '.c'
+
+	def find_table(pkgs, name, cache):
+		if name in cache:
+	#		print "** cache hit:", name
+			return cache[name]
+	#	print "** search:", name
+		for pkg in pkgs:
+	#		print "** package:, pkg
+			for obj in pkgs[pkg]:
+				if obj[NAME].split(os.path.sep)[-1] == name or obj[NAME].find(name) >= 0:
+	#			if obj[NAME].find(name) >= 0:
+					cache[name] = obj
+					return obj
+		return None
+
+	def trace(pkgs, name, cache, level = 0):
+		leading = ''
+		if level:
+			leading = ' ' * (level * 2)
+		print leading, 'tracing target:', _n(name)
+
+		obj = find_table(pkgs, name, cache)
+		if not obj:
+			print leading, 'failed:', name, 'not found'
+			return
+		if not obj[LINK]:
+	#		print leading, 'no outgoing links'
+			return
+		print leading, 'found:', _n(obj[NAME]), ',', len(obj[LINK]), 'outgoing links'
+		for link in obj[LINK]:
+			link_name = link.split(os.path.sep)[-1]
+			print leading, '+-->', _n(link_name)
+			# don't trace a file twice
+			if link_name in cache or link_name == name: continue
+			try:
+				trace(pkgs, link_name, cache, level + 1)
+			except RuntimeError:
+				print leading, 'warn: got except on analyzing', name, '->', link_name, 'level:', level
+
+		pass
+
+	def write_dep(pkgs, fout, name, cache, finished):
+		obj = find_table(pkgs, name, cache)
+		if not obj: return
+		if name in finished: return
+	#	if not obj[LINK]:
+	#		fout.write("%s: %s\n\n" % (name, _n(name)))
+	#		finished.add(name)
+	#		return
+		for link in obj[LINK]:
+			link_name = link.split(os.path.sep)[-1]
+			if link_name in finished or link_name == name: continue
+			try:
+				write_dep(pkgs, fout, link_name, cache, finished)
+			except RuntimeError:
+				print 'warn: got except on analyzing', name, '->', link_name
+		if not name in finished:
+			fout.write("%s: %s %s\n\n" % (name, _n(name), ' '.join(map(lambda p: p.split(os.path.sep)[-1], obj[LINK]))))
+			finished.add(name)
+		pass
+
+	# init cache
+	cache = {}
+
+	print 'analyzing target:', _n(filename)
+	trace(pkgs, filename, cache)
+
+	print "\ngenerating dep list:\n"
+	finished = set([])
+	write_dep(pkgs, fout, filename, cache, finished)
+	pass
+
 def extract_symbols(path = '.', depth = 0):
 	pkglist = {}
 
@@ -472,6 +550,8 @@ if __name__ == '__main__':
 		action="store", dest="outfile", type = "string", default = '-')
 	parser.add_option("-m", "--depth", help = "max depth (default: 0, unlimited)",
 		action="store", dest="depth", type = "int", default = 0)
+	parser.add_option("-t", "--trace", help = "trace dependency of single file",
+		action="store", dest="trace", type = "string", default = '')
 	parser.set_defaults(gendot = True)
 
 	options, args = parser.parse_args()
@@ -485,7 +565,9 @@ if __name__ == '__main__':
 		else:
 			of = file(options.outfile, "w")
 
-		if options.gendot:
+		if options.trace:
+			dump_trace(pkglist, of, options.trace)
+		elif options.gendot:
 			dump_dot(pkglist, of)
 		else:
 			dump_tbl(pkglist, of)
