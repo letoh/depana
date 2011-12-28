@@ -383,7 +383,7 @@ def dump_dot(pkgs, fout):
 		for obj in pkgs[pkg]:
 			color_prop = ''
 			if not obj[LINK]:
-				color_prop = ', color = "lightgreen"'
+				color_prop = ', color = "cyan"'
 			elif not obj[BREF]:
 				color_prop = ', color = "hotpink"'
 #				fout.write("\t\t%s [label=\"%s (%d/%d)\", color = \"lightgreen\"];\n" % (_name(obj[NAME]), obj[NAME], len(obj[BREF]), len(obj[LINK])))
