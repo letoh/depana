@@ -459,6 +459,8 @@ if __name__ == '__main__':
 	parser = OptionParser()
 	parser.add_option("-g", "--dot", help = "generate dot file (default)",
 		action="store_true", dest = "gendot", default = True)
+	parser.add_option("-s", "--silent", help = "don't generate anything",
+		action="store_true", dest = "slient", default = False)
 	parser.add_option("-x", "--dump", help = "dump raw file",
 		action="store_false", dest = "gendot", default = False)
 	parser.add_option("-p", "--path", help = "start path (default: .)",
@@ -472,13 +474,15 @@ if __name__ == '__main__':
 	pkglist = extract_symbols(options.path)
 	analyze_symbol(pkglist)
 
-	if options.outfile == '-':
-		of = _stdout
-	else:
-		of = file(options.outfile, "w")
-	if options.gendot:
-		dump_dot(pkglist, of)
-	else:
-		dump_tbl(pkglist, of)
+	if not options.slient:
+		if options.outfile == '-':
+			of = _stdout
+		else:
+			of = file(options.outfile, "w")
 
+		if options.gendot:
+			dump_dot(pkglist, of)
+		else:
+			dump_tbl(pkglist, of)
 
+		pass
