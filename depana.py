@@ -397,7 +397,7 @@ def dump_dot(pkgs, fout):
 
 			links = obj[LINK]
 			for ref in links:
-				fout.write("\t%s -> %s;\n" % (_name(obj[NAME]), _name(ref)))
+				fout.write("\t%s -> %s [label=\"%s\"];\n" % (_name(obj[NAME]), _name(ref), reduce(lambda cnt, need: (need[1] == ref) and cnt + 1 or cnt , obj[NEED], 0)))
 
 	fout.write("}\n")
 	pass
